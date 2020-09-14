@@ -22,19 +22,20 @@
  */
 #define KEY34 4
 #define RESETBT 5
-#define SavingLED 6
-#define BusyLED 7
-#define ENB_A 8
-#define ENA_B 9
-#define ENRST 10
-#define ENB_M 14
-#define ENM_B 15
-#define CP 18
-#define SW 19
+#define EN_AB 7
+#define EN_RST 8
+#define EN_MB 9
+#define SavingLED 14
+#define BusyLED 15
+#define CP 16
+#define SW 17
 /*
  * Defines for delays and lengths:
  */
-#define DEBBDELAY 15
+#define STARTDELAY 1000
+#define BUSYDELAY 300
+#define SAVEDELAY 800
+#define DEBBDELAY 30
 #define DESIGNATOR 7
 #define INFOLENGTH 30
 /*
@@ -69,11 +70,9 @@ void setup() {
     pinMode(RESETBT, OUTPUT);
     pinMode(SavingLED, OUTPUT);
     pinMode(BusyLED, OUTPUT);
-    pinMode(ENB_A, OUTPUT);
-    pinMode(ENA_B, OUTPUT);
-    pinMode(ENRST, OUTPUT);
-    pinMode(ENB_M, OUTPUT);
-    pinMode(ENM_B, OUTPUT);
+    pinMode(EN_AB, OUTPUT);
+    pinMode(EN_RST, OUTPUT);
+    pinMode(EN_MB, OUTPUT);
     pinMode(CP, INPUT);
     pinMode(SW, INPUT);
   
@@ -83,7 +82,14 @@ void setup() {
   
     // Begin serial communication for AT:
     Serial.begin(38400);
-      
+    
+    // Enter AT command mode:
+    digitalWrite(KEY34, HIGH);
+    digitalWrite(RESETBT, LOW);
+    delay(DEBBDELAY);
+    digitalWrite(RESETBT, HIGH);
+    delay(STARTDELAY);  
+    
     // Save previous BT module configuration:
     SavePrevious();
     // Check which mode of operation is defined:
@@ -116,24 +122,22 @@ void CheckMode() {
   
     // Signal that the module is busy:
     digitalWrite(BusyLED, LOW);
-    // Enable ATmega8A Rx and Tx signals:
-    digitalWrite(ENB_M, HIGH);
-    digitalWrite(ENM_B, HIGH);
-      // Open Arduino Rx and Tx so that these pins can
+    // EN_ABle ATmega8A Rx and Tx signals:
+    digitalWrite(EN_MB, HIGH);
+    // Open Arduino Rx and Tx so that these pins can
     // be freely used by Arduino UART:
-    digitalWrite(ENA_B, LOW);
-    digitalWrite(ENB_A, LOW);
-    digitalWrite(ENRST, LOW);
+    digitalWrite(EN_AB, LOW);
+    digitalWrite(EN_RST, LOW);
     
     // Enter AT command mode:
     digitalWrite(KEY34, HIGH);
     digitalWrite(RESETBT, LOW);
-    delay(50);
+    delay(DEBBDELAY);
     digitalWrite(RESETBT, HIGH);
     
     // Reset the module to default:
     Serial.write("AT+ORGL\r\n");
-    delay(1000);
+    delay(2*BUSYDELAY);
     
     // Determine if the communication
     // or Programming mode is selected:
@@ -146,15 +150,14 @@ void CheckMode() {
     
     // Before reinitializing, clear KEY34:
     Serial.write("AT+INIT\r\n");
-    delay(500);
+    delay(BUSYDELAY);
     digitalWrite(KEY34, LOW);
     digitalWrite(RESETBT, LOW);
-    delay(50);
+    delay(DEBBDELAY);
     digitalWrite(RESETBT, HIGH);
 
     // Disable ATmega8A Rx and Tx signals:
-    digitalWrite(ENB_M, LOW);
-    digitalWrite(ENM_B, LOW);        
+    digitalWrite(EN_MB, LOW);        
     // Disable busy LED:
     digitalWrite(BusyLED, HIGH);
 }
@@ -168,24 +171,23 @@ void ProgrammingMode() {
     
     // Set UART speed for programming:
     Serial.write("AT+UART=115200,0,0\r\n");
-    delay(1000);
+    delay(BUSYDELAY);
     // Set the name of the programmer so it is
     // easily recognized by the PC or Android:
     Serial.write("AT+NAME=BT_Programmer\r\n");
-    delay(500);
+    delay(BUSYDELAY);
     // Set the role of the module to slave:
     Serial.write("AT+ROLE=0\r\n");
-    delay(500);
+    delay(BUSYDELAY);
     // Set the password:
     Serial.write("AT+PSWD=1234\r\n");
-    delay(500);
+    delay(BUSYDELAY);
     
     // Short Arduino Rx and Tx with Board Rx and Tx
     // and also allow BT module to reset Arduino when
     // needed
-    digitalWrite(ENA_B, HIGH);
-    digitalWrite(ENB_A, HIGH);
-    digitalWrite(ENRST, HIGH);
+    digitalWrite(EN_AB, HIGH);
+    digitalWrite(EN_RST, HIGH);
 }
 
 /*
@@ -199,31 +201,30 @@ void CommunicationMode () {
     Serial.write("AT+UART=");
     Serial.write(prevUART);
     Serial.write("\r\n");
-    delay(1000);
+    delay(BUSYDELAY);
     
     // Set the name of the programmer:
     Serial.write("AT+NAME=");
     Serial.write(prevNAME);
     Serial.write("\r\n");
-    delay(500);
+    delay(BUSYDELAY);
 
     // Set the password:
     Serial.write("AT+PSWD=");
     Serial.write(prevPSWD);
     Serial.write("\r\n");
-    delay(500);
+    delay(BUSYDELAY);
     
     // Set the role of the module:
     Serial.write("AT+ROLE=");
     Serial.write(prevROLE);
     Serial.write("\r\n");
-    delay(500);
+    delay(BUSYDELAY);
     
     // Open Arduino Rx and Tx so that these pins can
     // be freely used by Arduino UART:
-    digitalWrite(ENA_B, LOW);
-    digitalWrite(ENB_A, LOW);
-    digitalWrite(ENRST, LOW);
+    digitalWrite(EN_AB, LOW);
+    digitalWrite(EN_RST, LOW);
 }
 
 /*
@@ -234,37 +235,38 @@ void SavePrevious () {
 
     // Turn on SavingLED:
     digitalWrite(SavingLED, LOW);
-    // Enable ATmega8A Rx and Tx signals:
-    digitalWrite(ENB_M, HIGH);
-    digitalWrite(ENM_B, HIGH);
-        
+    // EN_ABle ATmega8A Rx and Tx signals:
+    digitalWrite(EN_MB, HIGH);
+
+    delay(SAVEDELAY);
     // Request UART speed for communicating:
     Serial.write("AT+UART?\r\n");
     // Read BT module answer and save the baud rate:
     ReadAnswer(UARTID);
-    delay(500);
     
     // Request module name:
     Serial.write("AT+NAME?\r\n");
+    delay(4*BUSYDELAY);
     // Read BT module answer and save the name:
     ReadAnswer(NAMEID);
-    delay(500);
   
     // Request password for pairing:
     Serial.write("AT+PSWD?\r\n");
     // Read BT module answer and save the password:
     ReadAnswer(PSWDID);
-    delay(500);
     
     // Request module role (master/slave):
     Serial.write("AT+ROLE?\r\n");
     // Read BT module answer and save the role:
     ReadAnswer(ROLEID);
-    delay(500);
 
+    // Exit AT mode:
+    digitalWrite(KEY34, LOW);
+    digitalWrite(RESETBT, LOW);
+    delay(DEBBDELAY);
+    digitalWrite(RESETBT, HIGH);
     // Disable ATmega8A Rx and Tx signals:
-    digitalWrite(ENB_M, LOW);
-    digitalWrite(ENM_B, LOW);
+    digitalWrite(EN_MB, LOW);
     // Turn off SavingLED:
     digitalWrite(SavingLED, HIGH);
 }
@@ -278,7 +280,7 @@ void ReadAnswer(int CommandID) {
   
     // String which will keep received value:
     char ReceivedString[INFOLENGTH];
-    delay(500);
+    delay(SAVEDELAY);
     // Read until Rx buffer is empty: 
     int i = 0;
     boolean Read = false;
